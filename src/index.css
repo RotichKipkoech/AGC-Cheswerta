@@ -1,0 +1,100 @@
+@import url('https://fonts.googleapis.com/css2?family=Public+Sans:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* AGC Kenya — Alizarin Crimson, Blue & White */
+    --background: 0 0% 97%;
+    --foreground: 220 20% 12%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 220 20% 12%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 220 20% 12%;
+
+    --primary: 0 84% 50%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 220 14% 94%;
+    --secondary-foreground: 220 20% 12%;
+
+    --muted: 220 14% 94%;
+    --muted-foreground: 220 10% 45%;
+
+    --accent: 220 80% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --success: 160 64% 40%;
+    --success-foreground: 0 0% 100%;
+
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 220 14% 89%;
+    --input: 220 14% 89%;
+    --ring: 0 84% 50%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 270 50% 30%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 0 0% 100%;
+    --sidebar-primary-foreground: 270 50% 30%;
+    --sidebar-accent: 270 45% 24%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 270 45% 24%;
+    --sidebar-ring: 0 0% 100%;
+
+    --accent: 270 50% 50%;
+    --accent-foreground: 0 0% 100%;
+
+    --font-body: 'Public Sans', system-ui, sans-serif;
+
+    --shadow-elevated: 0 1px 3px 0 rgba(0,0,0,0.06), 0 4px 12px -2px rgba(0,0,0,0.08);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground;
+    font-family: var(--font-body);
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-body);
+    font-weight: 700;
+  }
+}
+
+@layer utilities {
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  .metric-card {
+    @apply bg-card rounded-lg border p-6 transition-shadow hover:shadow-md;
+    box-shadow: var(--shadow-elevated);
+  }
+
+  .page-header {
+    @apply mb-6;
+  }
+
+  .page-title {
+    @apply text-2xl font-bold tracking-tight;
+  }
+
+  .page-description {
+    @apply text-muted-foreground mt-1;
+  }
+}
