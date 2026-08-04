@@ -37,9 +37,10 @@ def list_members():
         q = q.filter_by(department=d)
     if (s := request.args.get("status")):
         q = q.filter_by(status=s)
+    if (bs := request.args.get("baptism_status")):
+        q = q.filter_by(baptism_status=bs)
     if (search := request.args.get("q")):
         q = q.filter(Member.full_name.ilike(f"%{search.strip()}%"))
-    q = q.order_by(Member.full_name.asc())
     q = q.order_by(Member.full_name.asc())
 
     page = request.args.get("page", 1, type=int)

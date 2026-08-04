@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from "react";
-import { Search, Plus, Edit, Trash2, Eye, Loader2, X, Users, UserCheck, UserX, Filter, UploadCloud, Phone, User, Calendar } from "lucide-react";
+import { useEffect, useState, useCallback, useMemo } from "react";
+import { Search, Plus, Edit, Trash2, Eye, Loader2, X, Users, UserCheck, UserX, Filter, UploadCloud, Phone, User, Calendar, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -19,13 +19,17 @@ type Member = {
   join_date: string | null; status: string;
 };
 type FormState = {
-  firstName: string; lastName: string; phone: string; 
-  gender: string; 
+  firstName: string; lastName: string; phone: string;
+  gender: string;
   baptism_status: string; department: string; status: string;
+};
+type MembersResponse = {
+  members: Member[]; total: number; page: number; pages: number; per_page: number;
 };
 
 const MINISTRIES = ["Men","Women","Youth","Children","Choir","Sunday School","Evangelism","Mission","Compassion","Education","Discipleship"];
 const INIT_FORM: FormState = { firstName:"", lastName:"", phone:"", gender:"", baptism_status:"", department:"", status:"active" };
+const PER_PAGE = 20;
 
 function Modal({ open, title, wide, onClose, children }: { open: boolean; title: string; wide?: boolean; onClose: () => void; children: React.ReactNode }) {
   useEffect(() => {
@@ -104,11 +108,54 @@ const statusBadge = (s: string) => {
   return 'bg-blue-50 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400';
 };
 
+/** Numbered page control: 1 … [current-1] [current] [current+1] … last,
+ * collapsing with ellipses once there are more pages than fit comfortably. */
+function PageNumbers({ page, pages, onChange }: { page: number; pages: number; onChange: (p: number) => void }) {
+  const items = useMemo(() => {
+    if (pages <= 7) return Array.from({ length: pages }, (_, i) => i + 1);
+    const set = new Set<number>([1, pages, page, page - 1, page + 1]);
+    return Array.from(set).filter(n => n >= 1 && n <= pages).sort((a, b) => a - b);
+  }, [page, pages]);
+
+  const withGaps: (number | "gap")[] = [];
+  items.forEach((n, i) => {
+    if (i > 0 && n - (items[i - 1] as number) > 1) withGaps.push("gap");
+    withGaps.push(n);
+  });
+
+  return (
+    <div className="flex items-center gap-1">
+      {withGaps.map((n, i) =>
+        n === "gap" ? (
+          <span key={`gap-${i}`} className="px-1.5 text-sm text-muted-foreground">…</span>
+        ) : (
+          <Button
+            key={n}
+            size="sm"
+            variant={n === page ? "default" : "outline"}
+            className="h-8 min-w-8 px-2.5 tabular-nums"
+            onClick={() => onChange(n)}
+          >
+            {n}
+          </Button>
+        )
+      )}
+    </div>
+  );
+}
+
 export default function Members() {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [page, setPage] = useState(1);
+  const [pages, setPages] = useState(1);
+  const [total, setTotal] = useState(0);
+
+  const [globalStats, setGlobalStats] = useState({ total: 0, active: 0, baptized: 0 });
+
   const [addOpen, setAddOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<Member | null>(null);
@@ -116,25 +163,52 @@ export default function Members() {
   const [form, setForm] = useState<FormState>(INIT_FORM);
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  // Debounce the search box so we're not hitting the API on every keystroke.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search), 350);
+    return () => clearTimeout(t);
+  }, [search]);
+
+  // Any time the search text or status filter actually changes, go back to page 1.
+  useEffect(() => { setPage(1); }, [debouncedSearch, statusFilter]);
+
+  const load = useCallback(async () => {
     setLoading(true);
-    try { const r = await apiFetch<{ members: Member[] }>("/api/members"); setMembers(r.members ?? []); }
-    catch (e) { toast.error((e as Error).message); }
+    try {
+      const params = new URLSearchParams({ page: String(page), per_page: String(PER_PAGE) });
+      if (debouncedSearch) params.set("q", debouncedSearch);
+      if (statusFilter !== "all") params.set("status", statusFilter);
+      const r = await apiFetch<MembersResponse>(`/api/members?${params}`);
+      setMembers(r.members ?? []);
+      setPages(Math.max(r.pages ?? 1, 1));
+      setTotal(r.total ?? 0);
+    } catch (e) { toast.error((e as Error).message); }
     finally { setLoading(false); }
-  };
-  useEffect(() => { load(); }, []);
+  }, [page, debouncedSearch, statusFilter]);
 
-  const filtered = members.filter(m => {
-    if (statusFilter !== 'all' && m.status !== statusFilter) return false;
-    const q = search.toLowerCase();
-    return m.full_name.toLowerCase().includes(q) || (m.phone ?? "").includes(q) || (m.department ?? "").toLowerCase().includes(q);
-  });
+  useEffect(() => { load(); }, [load]);
 
-  const stats = {
-    total: members.length,
-    active: members.filter(m => m.status === 'active').length,
-    baptized: members.filter(m => m.baptism_status === 'Baptized').length,
-  };
+  // Global summary cards (Total / Active / Baptized) reflect the whole
+  // roster, independent of the current search/filter/page — each is a
+  // cheap per_page=1 request, reading only the `total` count back.
+  const loadGlobalStats = useCallback(async () => {
+    try {
+      const countOf = async (qs: string) => {
+        const r = await apiFetch<MembersResponse>(`/api/members?per_page=1${qs}`);
+        return r.total ?? 0;
+      };
+      const [t, active, baptized] = await Promise.all([
+        countOf(""),
+        countOf("&status=active"),
+        countOf("&baptism_status=Baptized"),
+      ]);
+      setGlobalStats({ total: t, active, baptized });
+    } catch { /* summary cards are non-critical — fail quietly */ }
+  }, []);
+
+  useEffect(() => { loadGlobalStats(); }, [loadGlobalStats]);
+
+  const refreshAll = () => { load(); loadGlobalStats(); };
 
   const openAdd = () => { setForm(INIT_FORM); setAddOpen(true); };
   const openEdit = (m: Member) => {
@@ -170,7 +244,7 @@ export default function Members() {
           toast.warning("Welcome SMS failed — will retry automatically.");
         }
       }
-      load();
+      refreshAll();
     } catch (e) { toast.error((e as Error).message); }
     finally { setSaving(false); }
   }, [form, editTarget]);
@@ -179,9 +253,12 @@ export default function Members() {
     try {
       const res = await apiFetch<{ pending?: boolean; message?: string }>(`/api/members/${id}`, { method: "DELETE" });
       toast.success(res?.pending ? (res.message || "Deletion requested — pending admin approval") : "Member removed");
-      load();
+      refreshAll();
     } catch (e) { toast.error((e as Error).message); }
   };
+
+  const rangeStart = total === 0 ? 0 : (page - 1) * PER_PAGE + 1;
+  const rangeEnd = Math.min(page * PER_PAGE, total);
 
   return (
     <div className="animate-fade-in space-y-5">
@@ -234,7 +311,7 @@ export default function Members() {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">Members</h1>
-          <p className="text-sm text-muted-foreground mt-0.5">{members.length} registered members</p>
+          <p className="text-sm text-muted-foreground mt-0.5">{globalStats.total} registered members</p>
         </div>
         <div className="flex gap-2 shrink-0">
           <Button variant="outline" onClick={() => setBulkOpen(true)} className="gap-2">
@@ -247,9 +324,9 @@ export default function Members() {
       {/* Stats strip */}
       <div className="grid grid-cols-3 gap-3">
         {[
-          { label: "Total", value: stats.total, icon: Users, color: "text-primary", bg: "bg-primary/10" },
-          { label: "Active", value: stats.active, icon: UserCheck, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950" },
-          { label: "Baptized", value: stats.baptized, icon: UserX, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950" },
+          { label: "Total", value: globalStats.total, icon: Users, color: "text-primary", bg: "bg-primary/10" },
+          { label: "Active", value: globalStats.active, icon: UserCheck, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950" },
+          { label: "Baptized", value: globalStats.baptized, icon: UserX, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950" },
         ].map(s => (
           <Card key={s.label} className="hover:shadow-sm transition-shadow">
             <CardContent className="p-4 flex items-center gap-3">
@@ -296,12 +373,12 @@ export default function Members() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.length === 0
+                  {members.length === 0
                     ? <TableRow><TableCell colSpan={7} className="text-center text-muted-foreground py-12">
                         <Users className="h-10 w-10 mx-auto mb-2 opacity-20" />
                         <p>No members found</p>
                       </TableCell></TableRow>
-                    : filtered.map(m => {
+                    : members.map(m => {
                       const initials = m.full_name.split(' ').slice(0,2).map(n=>n[0]??'').join('').toUpperCase();
                       return (
                         <TableRow key={m.id} className="hover:bg-muted/30">
@@ -337,6 +414,33 @@ export default function Members() {
               </Table>
             </div>
           )}
+
+          {/* Pagination footer */}
+          {!loading && total > 0 && (
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-4 py-3 border-t">
+              <p className="text-xs text-muted-foreground">
+                Showing <span className="font-medium text-foreground">{rangeStart}–{rangeEnd}</span> of{" "}
+                <span className="font-medium text-foreground">{total}</span> members
+              </p>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="outline" size="sm" className="h-8 w-8 p-0"
+                  disabled={page <= 1}
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </Button>
+                <PageNumbers page={page} pages={pages} onChange={setPage} />
+                <Button
+                  variant="outline" size="sm" className="h-8 w-8 p-0"
+                  disabled={page >= pages}
+                  onClick={() => setPage(p => Math.min(pages, p + 1))}
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -345,7 +449,7 @@ export default function Members() {
         onOpenChange={setBulkOpen}
         defaultResource="members"
         lockResource
-        onImported={load}
+        onImported={refreshAll}
       />
     </div>
   );
