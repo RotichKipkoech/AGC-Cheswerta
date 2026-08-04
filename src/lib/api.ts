@@ -1,7 +1,7 @@
 const TOKEN_KEY = "agc_token";
 
 export const API_BASE: string =
-  (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:5000";
+  (import.meta.env.VITE_API_URL as string | undefined) || "https://agc-cheswerta.onrender.com";
 
 export const getToken = () => localStorage.getItem(TOKEN_KEY);
 export const setToken = (t: string | null) => {
