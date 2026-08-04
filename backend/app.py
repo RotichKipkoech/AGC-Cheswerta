@@ -83,12 +83,7 @@ def create_app(config_class=Config):
         except Exception:
             db.session.rollback()
 
-    # Auto-seed a superadmin + admin account on a fresh database, so there's
-    # always a way to log in without a manual seed script. Credentials come
-    # from Config (i.e. env vars) — see SUPERADMIN_* / ADMIN_* in config.py.
-    # Safe to run every deploy: each account is only created if a user with
-    # that username doesn't already exist, so it never overwrites a password
-    # someone has since changed.
+
     @app.before_request
     def _ensure_default_admin_accounts():
         _ensure_default_admin_accounts._done = getattr(_ensure_default_admin_accounts, '_done', False)

@@ -40,13 +40,24 @@ def list_members():
     if (search := request.args.get("q")):
         q = q.filter(Member.full_name.ilike(f"%{search.strip()}%"))
     q = q.order_by(Member.full_name.asc())
-    if (limit_raw := request.args.get("limit")):
-        try:
-            q = q.limit(min(max(int(limit_raw), 1), 200))
-        except ValueError:
-            pass
-    members = q.all()
-    return jsonify({"members": [m.to_dict() for m in members], "total": len(members)})
+    q = q.order_by(Member.full_name.asc())
+
+    page = request.args.get("page", 1, type=int)
+    per_page = request.args.get("per_page", 50, type=int)
+
+    pagination = q.paginate(
+        page=page,
+        per_page=min(per_page, 200),  # prevent huge requests
+        error_out=False
+    )
+
+    return jsonify({
+        "members": [m.to_dict() for m in pagination.items],
+        "total": pagination.total,
+        "page": pagination.page,
+        "pages": pagination.pages,
+        "per_page": pagination.per_page
+    })
 
 
 @bp.get("/<uuid:member_id>")
