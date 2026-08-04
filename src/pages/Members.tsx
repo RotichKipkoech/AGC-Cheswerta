@@ -106,10 +106,6 @@ const statusBadge = (s: string) => {
 
 export default function Members() {
   const [members, setMembers] = useState<Member[]>([]);
-  const [page, setPage] = useState(1);
-  const [pages, setPages] = useState(1);
-  const [total, setTotal] = useState(0);
-  const PER_PAGE = 50;
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -120,36 +116,13 @@ export default function Members() {
   const [form, setForm] = useState<FormState>(INIT_FORM);
   const [saving, setSaving] = useState(false);
 
-  const load = async (pageNumber = page) => {
-  setLoading(true);
-
-  try {
-    const r = await apiFetch<{
-      members: Member[];
-      total: number;
-      page: number;
-      pages: number;
-    }>(
-      `/api/members?page=${pageNumber}&per_page=${PER_PAGE}&q=${encodeURIComponent(search)}`
-    );
-
-    setMembers(r.members);
-    setTotal(r.total);
-    setPage(r.page);
-    setPages(r.pages);
-  } catch (e) {
-    toast.error((e as Error).message);
-  } finally {
-    setLoading(false);
-  }
-};
-  useEffect(() => {
-  const timer = setTimeout(() => {
-    load(1);
-  }, 300);
-
-  return () => clearTimeout(timer);
-}, [page, search]);
+  const load = async () => {
+    setLoading(true);
+    try { const r = await apiFetch<{ members: Member[] }>("/api/members"); setMembers(r.members ?? []); }
+    catch (e) { toast.error((e as Error).message); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { load(); }, []);
 
   const filtered = members.filter(m => {
     if (statusFilter !== 'all' && m.status !== statusFilter) return false;
