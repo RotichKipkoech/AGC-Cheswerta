@@ -8,9 +8,8 @@ Endpoints:
 """
 from __future__ import annotations
 import io
-import os
 from datetime import date, datetime
-from flask import Blueprint, request, jsonify, send_file, current_app
+from flask import Blueprint, request, jsonify, send_file
 from sqlalchemy import func
 from extensions import db
 from models import Member, Giving, Attendance, SystemSetting
@@ -59,14 +58,13 @@ def _q_members(gender=None, status=None):
     return q.order_by(Member.full_name.asc()).all()
 
 
-def _resolve_branding_asset_path(field_name):
+def _fetch_branding_asset(field_name):
     """
-    Resolve a branding image field (e.g. "logo_url", "report_stamp_url") to a
-    local file path for embedding in PDFs. Handles relative paths
-    ("/uploads/branding/x.png"), absolute URLs that happen to contain
-    "/uploads/" (e.g. behind a custom domain), and bare filenames. Returns
-    None if the field isn't set or the file can't be found locally (e.g.
-    it's hosted on an external CDN we can't read from disk).
+    Fetch a branding image (e.g. "logo_url", "report_stamp_url") from Supabase
+    Storage as raw bytes, for embedding directly in a generated PDF — ReportLab's
+    Image flowable accepts a file-like object just as happily as a path, so no
+    temp file is needed. Returns a BytesIO, or None if the field isn't set or
+    the file can't be fetched (e.g. it's been removed since the setting was saved).
     """
     setting = SystemSetting.query.get("app_branding")
     if not setting or not setting.value:
@@ -75,24 +73,32 @@ def _resolve_branding_asset_path(field_name):
     if not url:
         return None
 
-    marker = "/uploads/"
+    from supabase_client import supabase
+
+    # Supabase public URLs look like:
+    #   https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path...>
+    marker = "/object/public/"
     if marker in url:
-        rel = url.split(marker, 1)[1]
-    elif url.startswith("uploads/"):
-        rel = url[len("uploads/"):]
+        bucket, rel = url.split(marker, 1)[1].split("/", 1)
     else:
-        rel = url.lstrip("/")
+        # Not a recognisable Supabase public URL — branding assets always
+        # live in the "branding" bucket (see uploads.py), so fall back to
+        # treating whatever's left as the path within it.
+        bucket, rel = "branding", url.lstrip("/")
 
-    path = os.path.join(current_app.config["UPLOAD_DIR"], rel)
-    return path if os.path.isfile(path) else None
+    try:
+        file_bytes = supabase.storage.from_(bucket).download(rel)
+        return io.BytesIO(file_bytes)
+    except Exception:
+        return None
 
 
-def _get_logo_path():
-    return _resolve_branding_asset_path("logo_url")
+def _get_logo_image():
+    return _fetch_branding_asset("logo_url")
 
 
-def _get_stamp_path():
-    return _resolve_branding_asset_path("report_stamp_url")
+def _get_stamp_image():
+    return _fetch_branding_asset("report_stamp_url")
 
 
 # ── summary endpoint ───────────────────────────────────────────────────────────
@@ -213,11 +219,11 @@ def generate_pdf():
         RPT_TITLE = ParagraphStyle("RPTTTL", parent=styles["Normal"], fontSize=13, alignment=TA_CENTER,
                                    fontName="Helvetica-Bold", spaceBefore=4, spaceAfter=6)
 
-        logo_path = _get_logo_path()
+        logo_image = _get_logo_image()
         logo_img = None
-        if logo_path:
+        if logo_image:
             try:
-                logo_img = RLImage(logo_path, width=2.2*cm, height=2.2*cm, kind="proportional")
+                logo_img = RLImage(logo_image, width=2.2*cm, height=2.2*cm, kind="proportional")
             except Exception:
                 logo_img = None
 
@@ -604,11 +610,11 @@ def generate_pdf():
         # second page.
         STAMP_CAPTION = ParagraphStyle("STAMPCAP", parent=styles["Normal"], fontSize=6,
                                         textColor=colors.grey, alignment=TA_CENTER, spaceBefore=2, leading=7)
-        stamp_path = _get_stamp_path()
+        stamp_image = _get_stamp_image()
         stamp_content = None
-        if stamp_path:
+        if stamp_image:
             try:
-                stamp_content = RLImage(stamp_path, width=1.8*cm, height=1.8*cm, kind="proportional")
+                stamp_content = RLImage(stamp_image, width=1.8*cm, height=1.8*cm, kind="proportional")
             except Exception:
                 stamp_content = None
         stamp_box = RLTable([[stamp_content or Paragraph("Official Stamp", STAMP_CAPTION)]],

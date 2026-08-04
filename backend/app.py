@@ -1,5 +1,5 @@
 import os
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify
 from flask_cors import CORS
 from config import Config
 from extensions import db, migrate, jwt, bcrypt
@@ -11,7 +11,7 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
-    os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
+    # os.makedirs(app.config["UPLOAD_DIR"], exist_ok=True)
 
     CORS(app, origins=app.config["CORS_ORIGINS"], supports_credentials=True)
     db.init_app(app)
@@ -83,13 +83,64 @@ def create_app(config_class=Config):
         except Exception:
             db.session.rollback()
 
+    # Auto-seed a superadmin + admin account on a fresh database, so there's
+    # always a way to log in without a manual seed script. Credentials come
+    # from Config (i.e. env vars) — see SUPERADMIN_* / ADMIN_* in config.py.
+    # Safe to run every deploy: each account is only created if a user with
+    # that username doesn't already exist, so it never overwrites a password
+    # someone has since changed.
+    @app.before_request
+    def _ensure_default_admin_accounts():
+        _ensure_default_admin_accounts._done = getattr(_ensure_default_admin_accounts, '_done', False)
+        if _ensure_default_admin_accounts._done:
+            return
+        _ensure_default_admin_accounts._done = True
+        try:
+            from models import User, Profile, UserRole
+            from routes.users import SYNTHETIC_DOMAIN
+
+            bootstrap_accounts = [
+                (app.config["SUPERADMIN_USERNAME"], app.config["SUPERADMIN_PASSWORD"],
+                 app.config["SUPERADMIN_FULL_NAME"], "super_admin"),
+                (app.config["ADMIN_USERNAME"], app.config["ADMIN_PASSWORD"],
+                 app.config["ADMIN_FULL_NAME"], "admin"),
+            ]
+
+            for username, password, full_name, role in bootstrap_accounts:
+                username = (username or "").strip().lower()
+                if not username or not password:
+                    continue
+                if User.query.filter_by(username=username).first():
+                    continue
+
+                email = f"{username}@{SYNTHETIC_DOMAIN}"
+                user = User(username=username, email=email)
+                user.set_password(password)
+                db.session.add(user)
+                db.session.flush()
+
+                db.session.add(Profile(user_id=user.id, full_name=full_name,
+                                        email=email, username=username))
+                db.session.add(UserRole(user_id=user.id, role=role))
+
+                app.logger.warning(
+                    "Seeded default %s account '%s' on first run — sign in and change "
+                    "this password immediately (override SUPERADMIN_*/ADMIN_* env vars "
+                    "to set your own credentials instead).", role, username,
+                )
+
+            db.session.commit()
+        except Exception:
+            db.session.rollback()
+            app.logger.exception("Failed to seed default admin accounts")
+
     @app.route("/")
     def health():
-        return {"status": "ok", "app": "AGC Cheswerta CMS"}
+        return {"status": "ok", "message": "AGC Cheswerta CMS", "version": "1.0.0"}, 200
 
-    @app.route("/uploads/<path:filename>")
-    def serve_upload(filename):
-        return send_from_directory(app.config["UPLOAD_DIR"], filename)
+    # @app.route("/uploads/<path:filename>")
+    # def serve_upload(filename):
+    #     return send_from_directory(app.config["UPLOAD_DIR"], filename)
 
     @app.errorhandler(404)
     def not_found(_):
@@ -97,7 +148,17 @@ def create_app(config_class=Config):
 
     @app.errorhandler(500)
     def server_error(e):
-        return jsonify({"error": "Internal server error", "detail": str(e)}), 500
+        app.logger.exception(e)
+
+        if app.debug:
+            return jsonify({
+                "error": "Internal server error",
+                "detail": str(e)
+            }), 500
+
+        return jsonify({
+            "error": "Internal server error"
+        }), 500
 
     # ── Scheduler: only start in the main worker, not the reloader watchdog ──
     if not app.debug or os.environ.get("WERKZEUG_RUN_MAIN") == "true":
