@@ -58,6 +58,38 @@ def _serialize(row):
         out[c.name] = v
     return out
 
+from copy import deepcopy
+
+
+def _sanitize_system_setting(item):
+    if item.get("key") != "integrations":
+        return item
+
+    value = deepcopy(item.get("value") or {})
+
+    sms = value.get("sms", {})
+    if sms.get("api_key"):
+        sms["api_key_masked"] = f"••••{sms['api_key'][-4:]}"
+        sms.pop("api_key", None)
+
+    email = value.get("email", {})
+    if email.get("api_key"):
+        email["api_key_masked"] = "••••"
+        email.pop("api_key", None)
+
+    mpesa = value.get("mpesa", {})
+    if mpesa.get("passkey"):
+        mpesa["passkey_masked"] = "••••"
+        mpesa.pop("passkey", None)
+
+    value["sms"] = sms
+    value["email"] = email
+    value["mpesa"] = mpesa
+
+    item["value"] = value
+
+    return item
+
 
 def _apply_filters(q, model, filters):
     for f in filters or []:
@@ -132,7 +164,7 @@ def _row_from(model, payload):
 @bp.post("")
 @require_auth
 def query():
-    
+
     actor_id = get_jwt_identity()
 
     body = request.get_json(silent=True) or {}
@@ -158,12 +190,34 @@ def query():
             if body.get("limit"):
                 q = q.limit(int(body["limit"]))
             rows = q.all()
-            if body.get("single") or body.get("maybeSingle"):
-                if len(rows) > 1 and body.get("single"):
-                    return jsonify({"data": None, "error": {"message": "Multiple rows returned"}}), 200
-                data = _serialize(rows[0]) if rows else None
-                return jsonify({"data": data, "count": count, "error": None})
-            return jsonify({"data": [_serialize(r) for r in rows], "count": count, "error": None})
+
+                # Serialize all rows first
+            data = [_serialize(r) for r in rows]
+
+                # Hide secrets from system_settings
+            if table == "system_settings":
+                data = [_sanitize_system_setting(item) for item in data]
+
+                # Handle single row response
+                if body.get("single") or body.get("maybeSingle"):
+                    if len(data) > 1 and body.get("single"):
+                        return jsonify({
+                            "data": None,
+                            "error": {"message": "Multiple rows returned"}
+                        }), 200
+
+                    return jsonify({
+                        "data": data[0] if data else None,
+                        "count": count,
+                        "error": None
+                    })
+
+                # Return all rows
+                return jsonify({
+                    "data": data,
+                    "count": count,
+                    "error": None
+                })
 
         if op == "insert":
             values = body.get("values") or []
