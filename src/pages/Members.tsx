@@ -322,18 +322,21 @@ export default function Members() {
       </div>
 
       {/* Stats strip */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-3 gap-2 sm:gap-3">
         {[
           { label: "Total", value: globalStats.total, icon: Users, color: "text-primary", bg: "bg-primary/10" },
           { label: "Active", value: globalStats.active, icon: UserCheck, color: "text-emerald-600", bg: "bg-emerald-50 dark:bg-emerald-950" },
           { label: "Baptized", value: globalStats.baptized, icon: UserX, color: "text-blue-600", bg: "bg-blue-50 dark:bg-blue-950" },
         ].map(s => (
           <Card key={s.label} className="hover:shadow-sm transition-shadow">
-            <CardContent className="p-4 flex items-center gap-3">
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${s.bg} shrink-0`}>
-                <s.icon className={`h-5 w-5 ${s.color}`} />
+            <CardContent className="p-3 sm:p-4 flex items-center gap-2 sm:gap-3">
+              <div className={`w-9 h-9 sm:w-10 sm:h-10 rounded-xl flex items-center justify-center ${s.bg} shrink-0`}>
+                <s.icon className={`h-4 w-4 sm:h-5 sm:w-5 ${s.color}`} />
               </div>
-              <div><p className="text-xs text-muted-foreground">{s.label}</p><p className="text-xl font-bold tabular-nums">{s.value}</p></div>
+              <div className="min-w-0">
+                <p className="text-xs text-muted-foreground truncate">{s.label}</p>
+                <p className="text-lg sm:text-xl font-bold tabular-nums">{s.value}</p>
+              </div>
             </CardContent>
           </Card>
         ))}

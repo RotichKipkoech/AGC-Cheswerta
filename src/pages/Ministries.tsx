@@ -149,13 +149,13 @@ export default function Ministries() {
         <Card className="hover:shadow-sm transition-shadow">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0"><Church className="h-5 w-5 text-primary" /></div>
-            <div><p className="text-xs text-muted-foreground">Departments</p><p className="text-xl font-bold tabular-nums">{items.length}</p></div>
+            <div className="min-w-0"><p className="text-xs text-muted-foreground truncate">Departments</p><p className="text-xl font-bold tabular-nums">{items.length}</p></div>
           </CardContent>
         </Card>
         <Card className="hover:shadow-sm transition-shadow">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center shrink-0"><UserCheck className="h-5 w-5 text-emerald-600" /></div>
-            <div><p className="text-xs text-muted-foreground">Assigned Members</p><p className="text-xl font-bold tabular-nums">{totalMembers}</p></div>
+            <div className="min-w-0"><p className="text-xs text-muted-foreground truncate">Assigned Members</p><p className="text-xl font-bold tabular-nums">{totalMembers}</p></div>
           </CardContent>
         </Card>
       </div>
