@@ -338,7 +338,7 @@ export default function Login() {
                 </button>
                 <div>
                   <p className="font-semibold text-sm">Enter your OTP</p>
-                  <p className="text-xs text-muted-foreground">A 6-digit code was sent to <span className="font-medium">{fpMaskedPhone}</span>. It expires in 10 minutes.</p>
+                  <p className="text-xs text-muted-foreground">A 6-digit code was sent to <span className="font-medium">{fpMaskedPhone}</span>. It expires in 5 minutes.</p>
                 </div>
               </div>
 

@@ -140,7 +140,7 @@ def update_email():
 #  OTP password reset helpers
 # ─────────────────────────────────────────────────────────────
 
-OTP_TTL_MINUTES = 10
+OTP_TTL_MINUTES = 5
 
 def _generate_otp(length: int = 6) -> str:
     return "".join(random.choices(string.digits, k=length))

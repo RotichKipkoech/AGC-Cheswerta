@@ -8,11 +8,11 @@
   "servers": [
     {
       "url": "http://localhost:5000",
-      "description": "Local dev server (default Flask port)"
+      "description": "Local dev server"
     },
     {
       "url": "https://agc-cheswerta.onrender.com",
-      "description": "Production \u2014 replace with your real API domain"
+      "description": "Production Server"
     }
   ],
   "tags": [

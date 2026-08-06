@@ -18,6 +18,8 @@ from models import (
     AuditLog, LoginAttempt, AccountLock, Event,
 )
 from timezone_utils import to_nairobi_naive
+from security import require_auth
+
 
 bp = Blueprint("db", __name__, url_prefix="/api/db")
 
@@ -128,11 +130,9 @@ def _row_from(model, payload):
 
 
 @bp.post("")
+@require_auth
 def query():
-    try:
-        verify_jwt_in_request(optional=True)
-    except Exception:
-        pass
+    
     actor_id = get_jwt_identity()
 
     body = request.get_json(silent=True) or {}
