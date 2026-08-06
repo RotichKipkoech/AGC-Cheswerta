@@ -11,7 +11,7 @@
       "description": "Local dev server (default Flask port)"
     },
     {
-      "url": "https://REPLACE-WITH-YOUR-PRODUCTION-DOMAIN",
+      "url": "https://agc-cheswerta.onrender.com",
       "description": "Production \u2014 replace with your real API domain"
     }
   ],
