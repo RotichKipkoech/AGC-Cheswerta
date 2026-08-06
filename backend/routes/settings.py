@@ -13,6 +13,15 @@ from copy import deepcopy
 
 bp = Blueprint("settings", __name__, url_prefix="/api/settings")
 
+def sanitize_setting(setting):
+    data = setting.to_dict()
+
+    if setting.key == "integrations":
+        sms = data["value"].get("sms", {})
+        sms.pop("api_key", None)
+        data["value"]["sms"] = sms
+
+    return data
 
 @bp.get("")
 @require_auth
