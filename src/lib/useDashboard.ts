@@ -39,7 +39,11 @@ export function useDashboard() {
     const load = async () => {
       try {
         const [membersRes, givingsRes, attendanceRes, eventsRes] = await Promise.allSettled([
-          apiFetch<{ members: any[] }>('/api/members'),
+          // /api/members now paginates (default 50/page) — request the backend's
+          // max page size so this hook still sees the whole roster for computing
+          // baptized/active/recent-members, and read `total` (not array length)
+          // for the headline member count so it stays correct even beyond 200.
+          apiFetch<{ members: any[]; total: number }>('/api/members?per_page=200'),
           apiFetch<{ givings: any[] }>('/api/givings'),
           apiFetch<{ attendance: any[] }>('/api/attendance'),
           apiFetch<{ data: any[] }>('/api/db', {
@@ -55,6 +59,9 @@ export function useDashboard() {
         if (!mounted) return;
 
         const members: any[] = membersRes.status === 'fulfilled' ? (membersRes.value.members ?? []) : [];
+        const membersTotal: number = membersRes.status === 'fulfilled'
+          ? (membersRes.value.total ?? members.length)
+          : 0;
         const givings: any[] = givingsRes.status === 'fulfilled' ? (givingsRes.value.givings ?? []) : [];
         const attendance: any[] = attendanceRes.status === 'fulfilled' ? (attendanceRes.value.attendance ?? []) : [];
         const events: any[] = eventsRes.status === 'fulfilled' ? (eventsRes.value.data ?? []) : [];
@@ -116,7 +123,7 @@ export function useDashboard() {
         const monthlyAttendance = Object.entries(aMap).sort(([a], [b]) => a.localeCompare(b)).slice(-6).map(([, v]) => v);
 
         setStats({
-          totalMembers: members.length,
+          totalMembers: membersTotal,
           baptizedMembers: baptized,
           activeMembers: active,
           totalGivings: totals.grand,
