@@ -71,10 +71,16 @@ MODELS = {
 # endpoint (including reads) — identity, roles, credentials, security/audit
 # trail. No legitimate non-admin feature needs to read these directly.
 ADMIN_ONLY_TABLES = {
-    "users", "profiles", "user_roles",
+    "users", "user_roles",
     "audit_logs", "login_attempts", "account_locks",
     "feature_flags", "modules",
 }
+
+# profiles is a special case: everyone needs to read/update their OWN row
+# (name, phone, avatar_url) but not anyone else's without being admin. See
+# _profiles_self_access_ok() and its use in query() below — this is row-level,
+# not table-level, so it can't live in the simple sets above.
+PROFILE_SELF_SERVICE_OPS = {"select", "update"}
 
 # Tables anyone authenticated may still READ but only admin/super_admin may
 # write to. announcements power an in-app banner shown to every role.
@@ -132,6 +138,18 @@ def _serialize(row):
         data = _scrub_secrets(data)
 
     return data
+
+
+def _profiles_self_access_ok(filters, actor_id) -> bool:
+    """A non-admin may only touch their OWN profile row through this
+    generic endpoint — require the filters to pin the query to
+    user_id == actor_id. Anything broader (no filter, or targeting
+    someone else's id) is rejected."""
+    for f in filters or []:
+        if (f.get("col") == "user_id" and f.get("op", "eq") == "eq"
+                and str(f.get("value")) == str(actor_id)):
+            return True
+    return False
 
 
 def _apply_filters(q, model, filters):
@@ -204,6 +222,19 @@ def _row_from(model, payload):
     return model(**fields)
 
 
+@bp.get("/public/branding")
+def public_branding():
+    """
+    Unauthenticated on purpose — the login screen needs the logo/app name
+    before anyone has a token to send. Only ever returns the same safe,
+    non-sensitive keys as PUBLIC_SETTING_KEYS (never integrations/security_policy),
+    so this can't be used to leak anything the authenticated non-admin path
+    in query() wouldn't already allow.
+    """
+    rows = SystemSetting.query.filter(SystemSetting.key.in_(PUBLIC_SETTING_KEYS)).all()
+    return jsonify({"data": [_serialize(r) for r in rows], "error": None})
+
+
 @bp.post("")
 @require_auth
 def query():
@@ -220,6 +251,10 @@ def query():
 
     if table in ADMIN_ONLY_TABLES and not has_role(actor_id, "admin", "super_admin"):
         return jsonify({"error": "You do not have permission to access this table."}), 403
+
+    if table == "profiles" and not has_role(actor_id, "admin", "super_admin"):
+        if op not in PROFILE_SELF_SERVICE_OPS or not _profiles_self_access_ok(filters, actor_id):
+            return jsonify({"error": "You can only view or update your own profile."}), 403
 
     if table in ADMIN_WRITE_TABLES and op != "select" and not has_role(actor_id, "admin", "super_admin"):
         return jsonify({"error": "Only admins can modify this."}), 403
