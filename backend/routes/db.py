@@ -71,14 +71,25 @@ MODELS = {
 # endpoint (including reads) — identity, roles, credentials, security/audit
 # trail. No legitimate non-admin feature needs to read these directly.
 ADMIN_ONLY_TABLES = {
-    "users", "profiles", "user_roles", "system_settings",
+    "users", "profiles", "user_roles",
     "audit_logs", "login_attempts", "account_locks",
     "feature_flags", "modules",
 }
 
-# Tables anyone authenticated may still READ (e.g. announcements power an
-# in-app banner shown to every role) but only admin/super_admin may write to.
-ADMIN_WRITE_TABLES = {"announcements"}
+# Tables anyone authenticated may still READ but only admin/super_admin may
+# write to. announcements power an in-app banner shown to every role.
+# system_settings is trickier: it holds both public display settings
+# (app_branding — the logo/name every user's sidebar needs — plus
+# app_theme, maintenance_mode) AND admin-only ones (integrations, which
+# carries real provider API keys, and security_policy). See
+# PUBLIC_SETTING_KEYS below — non-admin reads of system_settings are
+# filtered down to just those rows, not blocked outright.
+ADMIN_WRITE_TABLES = {"announcements", "system_settings"}
+
+# system_settings rows a non-admin is allowed to read. Anything NOT in this
+# set (integrations, security_policy, audit_retention_days, ...) is invisible
+# to non-admins — filtered out at the query level, see the select handler.
+PUBLIC_SETTING_KEYS = {"app_branding", "app_theme", "localization", "maintenance_mode"}
 
 # Tables with a dedicated, permission-checked CRUD blueprint elsewhere.
 # Reads are fine here; writes must go through the real endpoint so
@@ -223,6 +234,10 @@ def query():
         if op == "select":
             q = model.query
             q = _apply_filters(q, model, filters)
+
+            if table == "system_settings" and not has_role(actor_id, "admin", "super_admin"):
+                q = q.filter(model.key.in_(PUBLIC_SETTING_KEYS))
+
             for o in body.get("order", []) or []:
                 col = getattr(model, o.get("col"), None)
                 if col is not None:
